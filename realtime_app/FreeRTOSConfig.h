@@ -26,6 +26,7 @@
 /=============================================================================*/
  
 #include "LPC17xx.h"
+#include "explorer.h"
 
 #define configUSE_PREEMPTION                 1
 #define configUSE_IDLE_HOOK                  0
@@ -98,5 +99,9 @@ to all Cortex-M ports, and do not rely on any particular library functions. */
 #define vPortSVCHandler SVC_Handler
 #define xPortPendSVHandler PendSV_Handler
 #define xPortSysTickHandler SysTick_Handler
+
+/* Context switch trace macros */
+#define traceTASK_SWITCHED_IN()     TaskIN( (uint32_t)pxCurrentTCB->pxTaskTag )
+#define traceTASK_SWITCHED_OUT()    TaskOUT()
 
 #endif /* FREERTOS_CONFIG_H */

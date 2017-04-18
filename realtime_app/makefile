@@ -102,11 +102,15 @@ INCLUDES += -I$(DIR_KERNEL)/include/                                           \
 SRC_APP_C := main.c
 
 SRC_APP_C += platform/$(PLATFORM)/core/source/startup.c                        \
-             platform/$(PLATFORM)/core/source/sysinit.c
+             platform/$(PLATFORM)/core/source/sysinit.c                        \
+             platform/$(PLATFORM)/drivers/source/lpc17xx_gpio.c
 
 # Application related includes
-INCLUDES += -I. -Iplatform/$(PLATFORM)/core/include/                           \
-            -Iplatform/$(PLATFORM)/core/include/$(CPU)/
+INCLUDES += -I.                                                                \
+            -Iinclude/                                                         \
+            -Iplatform/$(PLATFORM)/core/include/                               \
+            -Iplatform/$(PLATFORM)/core/include/$(CPU)/                        \
+            -Iplatform/$(PLATFORM)/drivers/include/
 
 ################################################################################
 # List of the objects files to be compiled/assembled                           #
