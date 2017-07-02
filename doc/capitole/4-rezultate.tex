@@ -1,0 +1,14 @@
+\chapter{Rezultate experimentale}
+
+Testele efectuate au arătat că robotul se comportă conform așteptărilor și răspunde, atât la comenzi, cât și la modificări ale parametrilor mediului înconjurător, fără întârzieri semnificative. Am verificat, de asemenea, declanșarea sistemului de siguranță în cazul întâlnirii unor obstacole și am constatat că funcționează corect pentru mai multe tipuri ale acestora, însă este necesară calibrarea senzorilor de proximitate la fiecare pornire a robotului prin reglarea potențiometrelor.
+
+\insfig{functiune.jpg}{Robotul aflat în funcțiune}{functiune}{0.75}
+
+\newpage
+Pentru a demonstra caracterul asincron al aplicației, am programat aprinderea câte unui LED pentru fiecare tip de task, pe durata execuției acestuia, și am observat astfel în timp real modificarea ponderii fiecărei funcționalități în funcție de circumstanțe, în termen de timp de rulare pe procesor.
+
+\insfig{interfata.png}{Interfața cu utilizatorul}{interfata}{0.9}
+
+Am constatat că transferul datelor se realizează corect și raza de transmisie este confortabil de mare, atâta timp cât nu este obstrucționată de prea mulți pereți sau ferestre. În acest scop, am folosit timpul de funcționare (\textit{uptime}) trimis periodic de robot ca un mecanism \textit{heartbeat}, recepția constantă a acestuia constituind un indicator al funcționării normale.
+
+Necesitatea de a implementa interfața serială a modulului Wi-Fi în software, folosind doi pini GPIO diferiți de cei dedicați nu a lăsat suficiente linii disponibile pentru citirea datelor de la camera video, nici chiar în condițiile în care comanda acesteia cade în sarcina microcontrollerului. Drept urmare, această funcționalitate nu a putut fi inclusă în proiect, fiind nevoie de modificări radicale ale arhitecturii robotului.

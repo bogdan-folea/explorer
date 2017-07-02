@@ -1,0 +1,140 @@
+\chapter{Implementarea software}
+
+Dezvoltarea de software pentru un sistem embedded diferă semnificativ de un calculator obișnuit, în sensul că acesta depinde în foarte mare măsură de hardware-ul acesta îi este destinat, fiind imperios necesară satisfacerea unor constrângeri de timp și de memorie. O caracteristică importantă este că nu există aproape niciodată o interfațare directă a acestuia cu utilizatorul. Comunicația cu exteriorul se realizează în general prin intermediul magistralelor de legătură cu alte dispozitive embedded și numai în cazuri excepționale direct cu utilizatorul, în special în scop de depanare sau ajustare a programelor.
+
+Diferențele față de sistemele Desktop sunt poate cel mai bine ilustrate în paradigma de dezvoltare a programelor. În timp ce pe un calculator obișnuit, dezvoltarea de software are loc pe aceeași mașină pe care codul va fi executat, este improbabil ca un sistem embedded să aibă resursele necesare pentru o astfel de abordare. Prin urmare, codul sursă al programelor este aproape întotdeauna scris pe un sistem Desktop (\textit{engl. host}) și apoi executat pe dispozitivul embedded căruia îi este destinat (\textit{engl. target}). Numeroasele implicații se reflectă în achiziția instrumentelor software, ce trebuie să fie specifice tipului de dispozitiv țintă, și în procesul în sine de dezvoltare. Deși ciclul normal editare--compilare--depanare se respectă, faza execuției induce o complexitate sporită prin faptul că programul trebuie transferat pe dispozitivul țintă sau rulat într-un mediu de simulare. \cite{walls}
+
+De asemenea, paradigma execuției este întru totul diferită. Pe un calculator obișnuit, utilizatorul solicită sistemului de operare lansarea în execuție a unui proces și acesta rulează până când își duce la îndeplinire sarcina sau este oprit de utilizator, în timp ce dispozitivele embedded rulează software specific la pornire, de obicei citind instrucțiunile direct din memoria nevolatilă. \cite{walls}
+
+În timp ce majoritatea programelor dezvoltate pentru sistemele Desktop sunt generice, deci pot fi executate pe o parte considerabilă din calculatoarele existente, specificitatea inerentă dispozitivelor embedded se manifestă și în software, mai ales din cauza destinațiilor extrem de variate ale acestora, dar și a deosebirilor tehnice, în special arhitecturi ale procesoarelor, tipuri de periferice sau sisteme de operare diferite.
+
+
+\section{Limbajul C}
+
+Una din puținele constante caracteristice domeniului este folosirea limbajului de programare C, în clipa de față practica cea mai apropiată de o normă a programării embedded. Fie că este vorba de de sisteme pe 8 sau 64 de biți, cu memorii variind de la câțiva octeți la mărimi de ordinul MB, limbajul C reprezintă numitorul comun al software-ului dezvoltat pentru oricare dintre acestea. \cite{barr}
+
+Popularitatea remarcabilă a limbajului, evoluția lui în timp, dezvoltarea unei multitudini de compilatoare de către oameni ce nu au fost implicați direct în concepția sa, precum și necesitatea unei definiții precise au dus la crearea, în colaborare cu ISO\footnote{International Organization for Standardization}, a unei serii de standarde sub numele de ANSI\footnote{American National Standards Institute} C, al căror obiectiv este "o definiție fără echivoc și hardware--independentă a limbajului". \cite{ritchie}
+
+Avantajele programării în C a unui dispozitiv embedded sunt remarcabile. Printre acestea se numără modelul structurat, numărul mic de termeni rezervați (\textit{engl. keywords}), robustețea operatorilor, varietatea tipurilor de date și portabilitatea, dispensând programatorul de obligația de a lua în considerare arhitectura procesorului. Însemnătatea cea mai mare, însă, o are controlul nemijlocit asupra hardware-ului pe care îl oferă fără ca acest lucru să aducă cu sine dezavantaje, rezultând un cod mai eficient și mai compact comparativ cu limbajele înalte.
+
+Drept consecință a generalizării ANSI C ca standard \textit{de facto} al programării embedded pe parcursul ultimilor ani și a considerabilelor avantaje enumerate mai sus, precum și din considerente de bună practică, am decis utilizarea limbajului C pentru implementarea programului în timp real responsabil de funcțiile de comandă și control ale robotului, de prelucrarea și asamblarea datelor, precum și de rolul decizional în declanșarea sistemului de siguranță.
+
+
+\section{Procesul de dezvoltare}
+
+Dezvoltarea de software pentru dispozitive embedded urmează, în linii mari, trei etape: scrierea codului sursă, translatarea sau cross-compilarea acestuia, ambele având loc pe un calculator (\textit{host}) și depanarea, ce are loc pe dispozitiv (\textit{target}), urmate de modificarea codului, prin care ciclul se reia. Instrumentele necesare ce corespund acestor stadii cad, de asemenea, în trei categorii: utilitare, constând în editoare text sau medii integrate de dezvoltare (\textit{engl. IDE}\footnote{Integrated Development Environment}), împreună cu sisteme de versionare (\textit{engl. VCS}\footnote{Version Control System}), cross-compilatoare și instrumente de depanare. \cite{noergaard}
+
+\insfig{compilare.png}{Fazele compilării pe ARM a programului în timp real}{compilare}{0.7}
+
+Etapa cea mai complexă tehnic este cross-compilarea, ilustrată schematic în figura de mai sus, așa cum se desfășoară în cazul proiectului de față. După cum se observă, procesul este asemănător compilării obișnuite a unui program destinat să ruleze pe un sistem Desktop. Această similitudine este însă mai degrabă aparentă decât reală.
+
+Un cross-compilator integrează funcțiile de preprocesare, translatare și asamblare a codului sursă în codul mașină corespunzător arhitecturii dorite. În majoritatea cazurilor, anumite părți ale programelor embedded sunt scrise manual direct în limbaj de asamblare, de exemplu codul ce se execută la pornire. Din acest motiv este necesară prelucrarea separată a acestora de către asamblor. Elementul critic este editorul de legături (linker). Pe lângă funcția obișnuită de combinare a modulelor obiect, linker-ul embedded are sarcina de a localiza corect datele și codul în memorie, pe baza unui script specificat de programator. Executabilul astfel obținut poate fi dezasamblat în scopuri de depanare, în special de a identifica optimizările făcute de compilator, sau translatat într-un fișier binar ce urmează să fie mutat și executat pe dispozitiv. \cite{noergaard}
+
+Pentru compilarea programului în timp real, destinat să ruleze pe microcontrollerul LPC1768 am folosit \textit{GNU ARM Embedded Toolchain}, un compilator performant, capabil de granulația fină a optimizărilor de memorie impusă de cerințele hardware ale proiectului. De asemenea, având în vedere numărul mare de fișiere sursă implicate, am decis utilizarea utilitarului \textit{GNU Make}, în scopul de a automatiza întregul proces.
+
+
+\section{Arhitectura programului în timp real}
+
+Un sistem în timp real nu este neapărat rapid, ci mai degrabă \textit{suficient de rapid}, cu alte cuvinte determinist sau predictibil. Dat fiind că nu există un interval maxim de timp universal aplicabil în orice situație, sistemele pot fi clasificate în funcție toleranța la depășirea termenelor limită în sisteme \textit{hard real-time} sau \textit{soft real-time}. Aceste categorii semnifică faptul că un sistem răspunde la un eveniment înaintea termenului limită întotdeauna, de exemplu în cazul sistemelor de siguranță și control, respectiv cu o probabilitate acceptabilă, în majoritatea situațiilor. În practică, un sistem embedded complex poate fi încadrat în ambele categorii, în măsura în care anumite părți ale sale trebuie să respecte cu strictețe constrângerile de timp, în vreme ce alte funcționalități mai puțin esențiale permit un timp de răspuns aproximativ. Acest lucru are un impact major mai ales asupra alegerii sistemului de operare și concepției logice a programului. \cite{walls}
+
+Arhitectura software propusă în această lucrare este stratificată și are ca element central sistemul de operare FreeRTOS. \textit{ARM mbed} oferă un mediu integrat de dezvoltare și toate instrumentele necesare, însă cu prețul unui grad de control diminuat asupra software-ului ce ajunge să fie executat pe dispozitiv. Din acest motiv, precum și din cauza necesității unei conexiuni la internet pentru a profita de aceste avantaje, am decis ca programul în timp real să fie dezvoltat de sine stătător, compilat local împreună cu sistemul de operare și driverele periferice și legat static cu acestea (\textit{engl. bare-metal development}). Această abordare s-a dovedit eficientă și potrivită cu nevoia de a exercita un control strict asupra programului încă din faza de dezvoltare.
+
+\insfig{software.png}{Stiva software a sistemului în timp real}{software}{0.63}
+
+La baza arhitecturii propuse se află elemente cu rolul de abstractizare a \mbox{nivelului} hardware, printre care se numără antetele specifice platformei, codul de inițializare, configurația de bază a dispozitivului și definițiile ARM CMSIS\footnote{Cortex Microcontroller Software Interface Standard}, ce \mbox{asigură} portabilitatea. Cu un nivel mai sus se află driverele periferice și \mbox{sistemul} de \mbox{operare} FreeRTOS. Acesta din urmă se situează deasupra driverelor prin \mbox{faptul} că interacționează cu straturile inferioare prin apeluri ale funcțiilor definite de \mbox{acestea}, însă în același timp poate fi considerat că operează la același nivel, \mbox{deoarece} în anumite cazuri face apel nemijlocit la regiștri.
+
+Componentele descrise mai sus constituie în ansamblu nivelul sistem, definit ca totalitatea elementelor software ce nu necesită ajustare în eventualitatea unei modificări a aplicației. Aceasta se află deasupra sa, la vârful stivei, deoarece accesul său la straturile inferioare nu se poate efectua decât prin intermediul obiectelor sistemului de operare. Aplicația constă într-o serie de fire de execuție arbitrate de planificatorul nucleului de timp real (\textit{engl. RTK}\footnote{Real-Time Kernel}).
+
+
+
+\section{Kernelul FreeRTOS}
+
+Sistemul de operare FreeRTOS este organizat sub forma unui \textit{microkernel} ce \mbox{implementează} mecanisme de planificare, sincronizare sau comunicare între \mbox{firele} de execuție și administrare minimală a memoriei și a spațiului de adrese. Spre \mbox{deosebire} de abordarea clasică procedurală, concepția FreeRTOS este a unui \mbox{sistem} asincron și urmează paradigma programării orientate pe evenimente. \mbox{Firele} de execuție, numite \textit{taskuri}, sunt arbitrate intern în mod dinamic de \mbox{către} kernel, pe baza unei ierarhii de priorități furnizate de aplicație. \cite{freertos1}
+
+\subsection{Planificarea}
+
+Din punctul de vedere al teoriei complexității, planificarea unor procese calculabile este o problemă de decizie nedeterminist polinomial completă (NPC). Rezolvarea unei astfel de probleme netractabile implică folosirea unor \mbox{euristici}, normă de la care nici planificarea nu face excepție. Dat fiind că este \mbox{necesară} \mbox{optimizarea} simultană atât a ordinii taskurilor, cât și a sincronizării, condiționată și de frecvența și durata schimbărilor de context, se impune folosirea unui \mbox{algoritm} dinamic. \cite{lee}
+
+\insfigs{planificare.png}{Exemplu de arbitrare a taskurilor în FreeRTOS}{\href{http://www.freertos.org/implementation/RTExample.gif}{www.freertos.org} (10.06.2017)}{planificare}{0.9}
+
+Algoritmul de planificare implementat în FreeRTOS intră în categoria \mbox{celor} cu priorități invariante (\textit{engl. fixed-priority scheduling}), întrucât prioritățile \mbox{taskurilor} sunt atribuite la proiectarea aplicației și nu se modifică la rulare (\textit{engl. run-time}) \mbox{decât} temporar și în cazuri excepționale, exemplificate și detaliate în secțiunea \mbox{următoare}. Această abordare are avantajul unei scheme de planificare de o \mbox{complexitate} redusă, deci al vitezei replanificării și schimbărilor de context.
+
+Este necesară, însă, o atenție sporită la atribuirea inițială a priorităților. Schema priorităților invariante presupune respectarea următoarelor principii:
+
+\begin{itemize}
+  \item Atribuirea priorității trebuie să se realizeze în conformitate cu perioada unui task -- cu cât perioada este mai mică, prioritatea acestuia să fie mai mare.
+  \item Suma procentelor de utilizare a timpului de procesor de către fiecare task trebuie să fie strict mai mică decât 100\%.
+  \item Este necesar să se stabilească în prealabil, prin calcul matematic sau cu ajutorul unor instrumente, dacă problema planificării curente admite soluție.
+\end{itemize}
+
+În anumite cazuri particulare, se poate realiza planificarea unui set de \mbox{taskuri} ce utilizează, în combinație, procesorul la capacitate maximă, de exemplu prin atribuirea de priorități armonice -- perioada oricărui task să fie egală cu produsul perioadelor celor cu prioritate mai mică decât acesta. \cite{cortexm}
+
+Dat fiind că procesorul nu poate executa decât un singur task la un moment de timp, se impune definirea unui mecanism de stări pentru a accelera procesul de decizie. Astfel, starea în care un proces rulează este unică și admite maxim un task, în schimb cele nu rulează se pot găsi în stări diferite.
+
+\insfig{taskuri.png}{Mecanismul de tranziție între stări a unui task FreeRTOS}{taskuri}{0.9}
+
+În cazul FreeRTOS, un task se poate găsi la un moment dat într-una din stările \textit{Running}, \textit{Ready}, \textit{Suspended} sau \textit{Blocked}. În starea Running se află doar taskul care rulează în mod curent și poate rămâne în aceasta doar dacă prioritatea sa este mai mare decât prioritățile celor din starea Ready. Aceasta caracterizează toate taskurile care pot fi executate la un moment de timp, cu alte cuvinte cele a căror execuție nu depinde momentan de factori externi. Suspended este starea în care se află procesele oprite, iar în starea Blocked se găsesc acele taskuri care așteaptă producerea unui eveniment sau eliberarea unei resurse. \cite{freertos2} 
+
+Prin respectarea principiilor de atribuire a priorităților amintite mai devreme și ținând seama de mecanismul bine definit de tranziție între stări pot fi evitate erori de planificare, precum situația unui task de prioritate mică care nu ajunge niciodată să fie executat (\textit{engl. processor starvation}).
+
+\subsection{Administrarea resurselor} % using pag 109
+
+Într-un sistem cu procese multiple, accesul concurent la resurse poate cauza conflicte. Un exemplu este situația în care un task realizează înainte de a ieși din starea Running un acces incomplet la o resursă, iar aceasta este accesată de către alt task înainte ca primul să ajungă din nou să se execute. Starea inconsistentă în care resursa ajunge astfel poate rezulta în coruperea datelor sau erori similare.
+
+Pentru evitarea acestor conflicte se folosesc mecanisme de sincronizare și obiecte puse la dispoziție de către sistemul de operare. În scopul de a limita accesul concurent al prea multor taskuri la o resursă, FreeRTOS oferă cozi și semafoare de tip contor, iar pentru excluderea mutuală, semafoare binare sau \textit{mutex}. Utilizarea incorectă a acestora poate cauza, însă, situații excepționale de tipul inversiunii de priorități. \cite{freertos2}
+
+\insfigs{invers.png}{Fenomenul de inversiune a priorităților}
+{\href{https://percepio.com/wp-content/uploads/2016/03/1.-priority-inversion.png}
+{www.percepio.com} (16.06.2017)}{invers}{0.9}
+
+Inversiunea priorităților se definește ca întârzierea accidentală a execuției unui task de către un alt task de prioritate mai mică ce deține accesul \mbox{exclusiv} la o resursă necesară primului. Ilustrat în figura de mai sus este cazul cel mai \mbox{defavorabil}, în care al doilea task poate fi întrerupt la rândul său, ducând la întârzieri \mbox{inadmisibile}. Fenomenul se poate petrece și în cazul folosirii cozilor sau altor obiecte similare. Soluția la această problemă este mecanismul de moștenire a priorității, a cărui funcționare este exemplificată mai jos.
+
+\insfigs{mostenire1.png}{Mecanismul de moștenire a priorității}
+{\href{http://m.eet.com/media/1075483/0406feat3fig5.gif}
+{www.embedded.com} (20.06.2017)}{mostenire1}{0.9}
+
+Această abordare presupune atribuirea unei priorități mai mari decât cele ale taskurilor fiecărei resurse partajate. Astfel, în situația în care un task ce deține accesul exclusiv la o resursă este întrerupt de altul concurent, de prioritate mai mare, primul va fi temporar înălțat (\textit{engl. hoisted}) la prioritatea resursei, revenind la modul normal de funcționare după eliberarea acesteia. În cazul accesului simultan la mai multe resurse vor fi implicate în moștenire doar cele disputate.
+
+\insfigs{mostenire2.png}{Moștenirea priorității în cazul resurselor multiple}
+{\href{http://m.eet.com/media/1075486/0406feat3fig8.gif}
+{www.embedded.com} (20.06.2017)}{mostenire2}{0.9}
+
+Din acest punct de vedere FreeRTOS face diferența între semafoare binare și mutex. Un mutex oferă un grad de încredere mai ridicat deoarece implementează mecanismul de moștenire a priorității, spre deosebire de un semafor binar, care este în general folosit pentru semnalarea între taskuri.O altă metodă recomandată de a asigura accesul exclusiv la o resursă este definirea unui task special numit \textit{gatekeeper}, cu rolul de a intermedia o resursă partajată cu taskurile ce o utilizează. Astfel, un acces la resursă se va transforma într-un mesaj către taskul gatekeeper, ce deține accesul exclusiv și neîntrerupt la resursa în cauză. \cite{freertos2}
+
+
+\section{Descriere funcțională}
+
+Datorită caracteristicilor esențiale ale FreeRTOS, zugrăvite pe scurt în subcapitolul precedent, a fost posibilă dezvoltarea unei aplicații ce funcționează secvențial numai într-o primă etapă, executându-se apoi complet asincron o dată cu pornirea sistemului de operare. Stările pe care le traversează sistemul după pornirea alimentării pot fi rezumate după cum urmează:
+
+\begin{itemize}
+  \item Inițializarea procesorului și a memoriei
+  \item Configurarea perifericelor PWM, GPIO\footnote{General-Purpose Input/Output}, ADC, UART și I2C 
+  \item O scurtă perioadă de așteptare pentru a avea siguranța că toate celelalte dispozitive au fost inițializate
+  \item Stingerea LED-ului indicator de stare
+  \item Pornirea taskurilor și a planificatorului FreeRTOS
+\end{itemize}
+
+\insfig{organizare.png}{Organizarea taskurilor în aplicația real-time}{organizare}{0.85}
+
+După traversarea etapei inițiale, taskurile intră în buclă infinită se execută asincron și interacționează cu hardware-ul sau între ele ca în figura de mai sus. Am definit taskuri separate pentru locomoție și pentru interfațarea fiecărui senzor, precum și trei taskuri gatekeeper corespunzătoare transmisiei și recepției UART, respectiv magistralei I2C. Caracterul critic al sistemului de siguranță a impus implementarea sa sub forma unei rutine de tratare a unei întreruperi externe și înregistrarea semnalelor primite de la senzorii de proximitate.
+
+Execuția taskurilor responsabile de comunicația cu senzorii de mediu și interpretarea măsurătorilor, acolo unde este nevoie, este periodică la intervale strâns corelate cu prioritatea și durata fiecăreia și controlată în baza acestor parametri de kernelul FreeRTOS. Datele sunt primite de la gatekeeper-ul magistralei I2C și expediate printr-o coadă de mesaje către cel responsabil de transmisia pe UART. Dacă există măsurători ce nu au fost încă transmise, se acordă prioritate acestui lucru în detrimentul înregistrării de noi date.
+
+Locomoția este tratată de un task dedicat ce este notificat asupra comenzilor de deplasare prin evenimente de către gatekeeper-ul receptor UART ce interpretează comenzile. În cazul în care pe direcția de deplasare există un obstacol va fi declanșată întreruperea externă ce acționează direct spre oprirea robotului și invalidează temporar printr-un semnal către taskul responsabil cu locomoția orice comenzi ce presupun apropierea de obstacol. Pentru asigurarea unei mișcări uniforme, acesta din urmă este pus în așteptarea unui eveniment sau a unei perioade marginal mai mari decât intervalul minim dintre două comenzi succesive.
+
+
+\section{Transferul de date}
+
+Transferul de date între microcontroller, ce trimite datele pe magistrala \mbox{serială} UART, și calculator, ce le recepționează prin protocolul IEEE\footnote{Institute of Electrical and Electronics Engineers} 802.11, se realizează prin intermediul modulului Wi-Fi din dotarea robotului. Deoarece în cazul \mbox{transferului} de date nu este critică respectarea constrângerilor stringente de timp real caracteristice aplicației de control și având în vedere necesitatea de a implementa funcționalități complexe, dar comparativ puține, am decis utilizarea unui bootloader Arduino pentru programare mai convenabilă și acces facil la funcții de bibliotecă. Modulul are asociată o adresă IP statică și inițial așteaptă un semnal de la microcontroller, apoi ascultă pe portul UDP până când primește un pachet de la calculator.
+
+După a fost recepționat acest pachet, este identificată adresa IP a clientului și începe transferul. Datele primite pe interfața serială sunt transmise mai departe ca pachete UDP către respectiva adresă, iar comenzile primite prin Wi-Fi sunt expediate, în sens invers, pe magistrala serială. Dacă adresa IP a calculatorului se modifică între timp, aceasta va fi actualizată la primirea următorului pachet și traficul de date va fi redirectat.
+
+\insfig{transfer.png}{Reprezentare schematică a transferului de date}{transfer}{0.6}
+
+Așa cum am menționat în capitolul precedent, nu a fost posibilă utilizarea capabilităților hardware pentru UART din cauza unei imperfecțiuni a modulului. Drept urmare, a fost folosită o implementare în software ce stabilește și eșantionează în mod direct stările a doi pini GPIO, cu condiția ca cel puțin unul dintre aceștia să suporte întreruperi externe. Această tehnică este cunoscută sub numele de \textit{bit banging} și presupune controlul direct din software al nivelului logic, sincronizării și altor parametri ai semnalului.
+
+\section{Interfața cu utilizatorul}
+
+Interfața cu utilizatorul a fost realizată sub forma unui script Python ce se conectează la modulul Wi-Fi al robotului. În urma stabilirii unei conexiuni, acesta înregistrează la fiecare 200ms tasta apăsată, corespunzătoare direcției de deplasare dorite, și trimite mai departe către robot comenzile de deplasare corespunzătoare sub forma unor pachete UDP. Simultan sunt recepționate pachetele de date ce reprezintă parametrii caracteristici mediului măsurați de senzorii robotului.
+
+Scriptul păstrează în memorie cele mai recente date primite de fiecare tip și actualizează valorile afișate de fiecare dată când una dintre acestea se modifică. De asemenea, în plus față de parametrii de mediu, în interfața grafică apar intervalul de timp de când sistemul de operare a pornit și în eventualitatea producerii unei erori, o scurtă descriere a naturii acesteia.

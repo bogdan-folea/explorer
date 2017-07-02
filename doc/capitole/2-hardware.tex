@@ -1,0 +1,158 @@
+\chapter{Arhitectura hardware}
+
+Arhitectura hardware propusă este una modulară și prevede, în măsura în care acest lucru este posibil, componente diferite pentru a îndeplini funcții diferite. Întregul sistem este proiectat în jurul unei unități responsabile de controlul robotului, reprezentată de un microcontroller (MCU) capabil de a satisface constrângerea de timp real.
+
+\insfig{bloc.png}{Schema bloc a sistemului}{bloc}{0.9}
+
+Direct conectați la aceasta sunt o serie de senzori de mai multe tipuri, reprezentând o importantă parte a sistemului deoarece oferă informații vitale despre mediul înconjurător, subansamblul responsabil cu locomoția, format din motoare și puntea de control montate pe un șasiu, și un modul Wi-Fi responsabil de comunicația cu calculatorul. Aceasta presupune atât transmisia datelor dinspre microcontroller către calculator, cât și cea în sens invers a comenzilor de deplasare.\bigskip
+
+La proiectarea robotului am luat în calcul alocarea cât mai eficientă a fiecărei sarcini, păstrând în același timp coerența întregului sistem și având totodată în vedere disponibilitatea pe piață a unor componente dedicate special îndeplinirii lor. În urma acestui proces am decis separarea principalelor funcții ale robotului conform schemei de mai sus.
+
+Potrivit acestei abstractizări, microcontrollerul îndeplinește funcțiile de comandă și control, precum și cea de asamblare a datelor despre mediu într-un mod consistent și predictibil. De asemenea, interpretează informații și comenzi, având, în anumite situații, rol decizional. Acest lucru conferă robotului adaptabilitate la condiții schimbătoare în mediu, spre exemplu comanda de oprire în cazul detecției un obstacol aflat pe direcția de mers sau reacția atunci când este afectată funcționarea unui senzor.
+
+Funcția de achiziție a datelor este îndeplinită de senzori specializați care trimit măsurători spre a fi asamblate de microcontroller. Locomoția robotului cade în sarcina motoarelor și a punții de control, iar transferul de date către calculator și primirea comenzilor sunt realizate de modulul Wi-Fi, având rolul de interfață a microcontrollerului.
+
+În cele ce urmează sunt descrise componentele hardware ale robotului și este motivată alegerea fiecăreia pentru a îndeplini una din funcțiile de mai sus. În acest scop am ținut seama, pe lângă cerințele tehnice, de consumul de energie, de cost și de existența unei interfețe convenabile de programare.
+
+\section{Controlul robotului}
+
+Principala componentă responsabilă de controlul robotului este platforma \textit{ARM mbed}, proiectată și fabricată de  compania \textit{NXP Semiconductors N.V.} Aceasta este dezvoltată în jurul unui microcontroller \textit{LPC1768}, la rândul său bazat pe microprocesorul \textit{ARM Cortex--M3}.
+
+\insfig{mbed.jpg}{Platforma \textit{NXP mbed LPC1768}}{mbed}{0.5}
+
+Alegerea acestei platforme se datorează atât puterii de procesare, cât și a ușurintei de a fi programată. Având în componență un adaptor USB\footnote{Universal Serial bus} conectat direct la memoria flash, platforma poate fi reprogramată prin copierea directă a codului binar obținut la cross-compilare. \cite{toulson}
+
+\subsection{Procesorul ARM Cortex--M3}
+
+Platforma are la bază microprocesorul pe 32 de biți \textit{ARM Cortex--M3} ce implementează arhitectura setului de instrucțiuni (\textit{engl. ISA}\footnote{Instruction Set Architecture}) ARMv7-M Thumb-2. Acesta, similar cu celelalte procesoare din seria \textit{Cortex-M}, prezintă caracteristici tehnice \cite{toulson} care îl recomandă pentru un proiect de tipul descris în lucrarea de față, printre care un număr mare al liniilor de întreruperi externe (configurabil; până la 240), reprioritizare dinamică a întreruperilor, latență redusă la intrarea și ieșirea din rutine de tratare a întreruperilor (\textit{engl. ISR}\footnote{Interrupt Service Routine}), acces la memorie și regiștri de sistem pentru depanare (\textit{engl. debugging}), frecvența ridicată de operare de până la 100 MHz, consumul mic de energie și comportamentul determinist.
+
+\subsection{Microcontrollerul LPC1768}
+
+În plus față de avantajele procesorului amintite mai sus, microcontrollerul \textit{LPC1768}, bazat pe acesta, integrează o memorie volatilă de 64kB și o memorie de program de 512kB \cite{toulson}, precum și posibilitatea de a fi reprogramat fără a fi izolat de sistem (\textit{engl. ISP}\footnote{In-System Programming}), așa cum am menționat la începutul acestui capitol. De asemenea, numărul mare de periferice îl recomandă pentru acest proiect, fiind în mod special utile convertorul analog-numeric (\textit{engl. ADC}\footnote{Analog-to-Digital Converter}), interfața I2C\footnote{Inter-Integrated Circuit}, interfața serială UART\footnote{Universal Asynchronous Receiver/Transmitter} și modularea în factor de umplere (\textit{engl. PWM}\footnote{Pulse-Width Modulation}).
+
+
+\section{Locomoția}
+
+Robotul este construit pe un șasiu cu șenile, fiecare dintre acestea acționată de câte un motor în curent continuu de mici dimensiuni, caracterizat de tensiunea nominală de 9V și puterea consumată de 0.6W la capacitate maximă. Prin intermediul unor angrenaje se realizează transmisia către ultima pereche de roți care antrenează, mai departe, șenilele.
+
+\insfig{sasiu.jpg}{Șasiul robotului și motoarele}{sasiu}{0.6}
+
+\subsection{Controlul vitezei}
+
+Pentru controlul vitezei acestora se utilizează capabilitatea de modulare în factor de umplere (PWM) a microcontrollerului \textit{LPC1768}. Avantajele acestei abordări sunt disiparea redusă de putere și posibilitatea motoarelor de a fi comandate să se miște cu viteze reduse, fără ca acest lucru să conducă la oprirea lor completă.
+
+Deoarece motoarele în curent continuu au nevoie, pentru scurt timp după pornire, de curenți mari, acestea au fost prevăzute cu condensatori ceramici. Din același motiv, a fost instalat și un condensator electrolitic de capacitate mai mare la alimentare, pentru a nu afecta funcționarea circuitelor integrate.
+
+\subsection{Controlul direcției}
+
+Direcția de deplasare a robotului este determinată de viteza relativă și sensul de deplasare ale fiecăreia dintre cele două șenile. Dacă acestea au viteze egale și același sens de deplasare, robotul se va mișca în linie dreaptă, iar dacă vitezele sunt diferite, traiectoria urmată se va curba spre cea cu viteza mai mică. În cazul în care sensurile de deplasare sunt opuse, acesta se va roti în jurul propriei axe.
+
+Controlul direcției se realizează prin intermediul unui circuit electronic cunoscut sub numele de \textit{punte H}, ce permite aplicarea unei tensiuni pe o sarcină, în cazul de față un motor, în orice sens, determinând sensul de rotire al motorului.
+
+\insfig{punteh.png}{Exemplu de \textit{punte H}}{punteh}{0.9}
+
+În general, o punte H este construită din 4 tranzistori, de obicei MOSFET\footnote{Metal–Oxide–Semiconductor Field-Effect Transistor}, dispuși ca în figura de mai sus. Motorul este în funcțiune atunci când o pereche de tranzistori opuși (în figura de mai sus T1,T4 sau T2,T3) este deschisă iar cealaltă este blocată. Inversarea polarității motorului se obține prin închiderea unei perechi de tranzistori opuși și deschiderea simultană a celeilalte. Tranzistorii de pe aceeași parte a punții nu trebuie să fie simultan deschiși, deoarece în acest fel rezultă un scurtcircuit la sursa de tensiune. Dacă puntea este proiectată cu tranzistori bipolari, perechea de sus trebuie să fie PNP în conexiune emitor la sursa de tensiune, respectiv NPN în conexiune emitor la punctul de masă în cazul perechii de jos. Pentru factori de amplificare mari se adaugă rezistențe la intrarea în bază.
+
+În plus, majoritatea punților sunt prevăzute cu diode de protecție legate în paralel la fiecare tranzistor, invers raportat la sensul căderii de tensiune, conform figurii de mai sus. În acest fel, la închiderea ambelor perechi de comutatoare, curentul invers produs de rotația inerțială a motorului se va putea scurge prin diodele ce au o impedanță comparativ mai mică și nu prin tranzistori, evitând distrugerea acestora și disipând energia sub formă de căldură.
+
+\subsection{Puntea de motoare DRV8833}
+
+Punțile H sunt disponibile sub forma unor circuite integrate sau pot fi construite din componente discrete. Un avantaj al primelor față de cele din urmă este spațiul mic pe care îl ocupă. Din acest motiv, în cazul de față a fost preferată folosirea punții duble \textit{DRV8833}, proiectată și construită de \textit{Texas Instruments}.
+
+\insfigs{punte.png}{Puntea de motoare \textit{DRV8833}}{\href{https://www.pololu.com/product/2130/pictures\#lightbox-picture0J3867}{www.pololu.com} (12.04.2017)}{punte}{0.75}
+
+Aceasta integrează două punți H, deci poate fi folosită la controlul direcției ambelor motoare, iar caracteristicile sale tehnice sunt mai mult decât adecvate proiectului de față. În plus, prezintă avantajul disipării eficiente a căldurii.
+
+
+\section{Detecția obstacolelor}
+
+Este necesar ca un robot explorator să prezinte un anumit grad de autonomie, în sensul că trebuie să fie capabil sa acționeze pe baza impulsurilor provenite din exterior. Cea mai mare importanță în acest sens o are mecanismul de de detecție a obstacolelor, pentru realizarea căreia se folosesc, în general, senzori de proximitate, definiți ca acei senzori ce pot detecta prezența unor obiecte din apropierea lor fără a intra fizic în contact cu ele.
+
+Un senzor de proximitate tipic are emite radiație electromagnetică, de obicei în spectrul infraroșu (IR), verificând dacă există modificări în câmpul electromagnetic al receptorului. Un obiect poziționat în raza senzorului va reflecta radiația, ducând astfel la detecția sa de către senzor. Pentru elimina interferențele, receptorul este, de regulă, prevăzut cu un filtru ce permite să treacă doar radiația IR. Firește că un obiect poate fi detectat doar în cazul în care reflectă undele IR. În cazuri speciale se pot folosi senzori ce au la bază principii de funcționare diferite, de exemplu senzori ultrasonici sau inductivi, însă aceștia au asociate mai multe restricții. Cei dintâi nu pot detecta suprafețe foarte moi, ca materialele textile, iar cei din urmă obiecte ce nu sunt metalice. Drept urmare, utilizarea senzorilor IR este, în cazul de față, cea mai adecvată.
+
+\insfigs{irsensor.png}{Principiul de funcționare al unui senzor de proximitate IR}{\href{https://maxembedded.files.wordpress.com/2013/07/ir-sensor-illustration.png?resize=470\%2C329}{www.maxembedded.com} (27.04.2017)}{irsensor}{0.57}
+
+Cea mai mare parte a senzorilor IR pot detecta nu doar prezența unui obiect în rază, dar si distanța aproximativă la care acesta se află. La baza acestei capabilități stă o lentilă sau o fantă poziționată imediat în fața unui receptor cu o suprafață mai mare. Când un fascicul IR intră în receptor sub un unghi oarecare va activa o anumită parte a receptorului, făcând posibilă identificarea unghiului de incidență deci, cunoscând distanța între emițător și receptor, și a distanței parcursă de unda luminoasă, aproximativ egală cu dublul distanței până la obiectul detectat. Ieșirea circuitului în acest caz este un semnal analogic, care, dacă se consideră necesar, poate fi transformat într-un semnal digital utilizând un comparator și un potențiometru.
+
+
+\section{Orientarea în spațiu}
+
+Pentru orice dispozitiv mobil, localizarea este o funcție importantă. De multe ori este necesar ca un robot să cunoască poziția sa exactă într-un sistem de referință, precum și orientarea sa în spațiu. O astfel de situație poate fi folosirea unui robot pentru cartografierea unui anumit mediu. 
+
+În prezent există numeroase metode de localizare, din care cea mai populară este prin GPS\footnote{Global Positioning System}. Acesta este un sistem global de navigație prin satelit și unde radio, bazat pe o rețea de sateliți artificiali ce orbitează în puncte fixe deasupra Pământului și transmit semnale conținând un marcaj de timp și un cod de poziționare geografică tuturor receptorilor aflați la sol. Orice receptor GPS aflat în raza neobstrucționată a cel puțin patru sateliți din rețea își poate calcula poziția cu o precizie de ordinul metrilor.
+
+Alternativ, poziția poate fi calculată folosind numărul de rotații ale roților, cunoscându-se diametrul lor, sau integrând accelerația momentană măsurată de un accelerometru. Aceste metode sunt susceptibile, însă, la erori, din cauză că pot exista derapaje și precizia măsurătorilor accelerometrului este afectată de zgomot, chiar în prezența unui mecanism de filtrare eficient. Drept urmare, aceste metode nu sunt adecvate robotului descris în lucrarea de față, prima din pricina faptului că nu poate produce rezultate la scară, iar cele din urmă deoarece erorile se cumulează în timp, conducând la date irelevante.
+
+O ultimă metodă este utilizarea unor marcaje plasate în prealabil și identificarea lor de către robot, ca de exemplu urmărirea unei linii. Aceasta este o metodă eficientă, dar nepotrivită în cazul de față, dat fiind că la explorarea unui mediu nou nu se poate garanta existența unor astfel de marcaje.
+
+Spre deosebire de poziție, orientarea în spațiu se poate obține în cele mai multe situații cu o precizie convenabilă prin măsurarea inducției magnetice a Pământului cu o busolă digitală. Am ales pentru acest proiect magnetometrul \textit{HMC5883L}, fabricat de \textit{Honeywell}, ce are în componența sa senzori magnetici anizotropici pe trei axe, rezistenți la zgomot. Alte caracteristici tehnice utile includ funcția de auto-calibrare, interfața de comunicare I2C, convertorul analog-numeric (ADC) și dimensiunile reduse.
+
+
+\section{Achiziția de date}
+
+Dat fiind că scopul final al unui robot explorator este achiziția și înregistrarea datelor despre mediul înconjurător, se impune ca acesta să poată măsura o varietate de parametri. Spre deosebire modelul uman echivalent, în care senzația nu este neapărat condiționată de natura parametrilor, măsurarea artificială presupune ca aceștia să fie cuantificabili. Din acest motiv, procesul de măsurare, a cărui abstractizare este ilustrată mai jos, implică eșantionarea mărimilor caracteristice mediului și conversia analog-numerică în vederea manipulării lor de către un sistem de calcul.
+
+Responsabilă de translatarea parametrilor fizici ai mediului la semnale electrice este o rețea de senzori specializați, subsisteme electronice cu rolul de a recepționa, identifica și cuantifica evenimente sau schimbări din mediu. 
+
+\insfig{achizitie.png}{Sistem de calcul și achiziție a datelor în timp real}{achizitii}{0.55}
+
+Fiecare dintre aceștia este destinat unui anumit tip de stimul exterior la care trebuie să răspundă. Informațiile obținute sunt trimise mai departe microcontrollerului pentru a fi prelucrate, acolo unde este cazul, și asamblate într-un mod coerent. Acestea sunt mai departe transmise prin intermediul unui calculator către un operator uman sau folosite la funcționarea sistemelor de siguranță și declanșarea unor alarme. Sistemul de siguranță prevăzut în acest proiect este evitarea ciocnirii cu obstacole pe baza măsurătorilor de distanță, amintit la începutul acestui capitol.
+
+\subsection{Caracteristicile mediului}
+
+Am considerat important ca robotul să poată măsura cât mai mulți parametri ai mediului înconjurător și cât mai variați, ca de exemplu temperatura, presiunea barometrică, intensitatea luminii ambientale și umiditatea \mbox{relativă}. \mbox{Componentele} utilizate pentru îndeplinirea acestui obiectiv sunt senzori a \mbox{căror} funcție de transfer este liniară, insensibili la modificarea altor mărimi fizice decât cele măsurate și care nu influențează parametrii măsurați.
+
+Pentru măsurarea temperaturii și presiunii barometrice am folosit senzorul digital \textit{BMP280}, produs de compania \textit{Bosch}. Acesta funcționează pe principiu \mbox{piezorezistiv}, cuantificând schimbarea impedanței unui semiconductor la aplicarea unei presiuni mecanice diferite. Valoarea rezultată este prelucrată de un convertor analog-numeric (ADC) și poate fi trimisă mai departe către microcontroller prin una din interfețele SPI\footnote{Serial Peripheral Interface} sau  I2C, împreună cu valoarea corelată a temperaturii, calculată pe baza unor diagrame predefinite. Senzorul are o rezoluție corespunzătoare valorilor de presiune și temperatură de 0.16 Pa, respectiv 0.01°C. Această exactitate face posibilă și folosirea acestuia ca altimetru, dată fiind strânsa legătură între altitudine și presiunea atmosferică.
+
+Evaluarea intensității luminii ambientale se realizează prin intermediul fototranzistorului \textit{TEMT6000}, conceput de \textit{Vishay Semiconductors}, sensibil la radiația luminoasă din spectrul vizibil. În esență, acesta este un tranzistor bipolar încapsulat într-o matriță transparentă, astfel încât joncțiunea bază-colector să rămână expusă. Radiația incidentă eliberează prin efect fotoelectric electroni ce sunt apoi injectați în bază, iar curentul rezultat este amplificat cu factorul de amplificare al tranzistorului, obținându-se un semnal analog.
+
+Pentru determinarea umidității relative, robotul folosește senzorul rezistiv \textit{AM2320}, fabricat de \textit{Aosong Electronics}, ce are în componență materiale organice macromoleculare și prezintă caracteristici tehnice excelente ca răspunsul rapid, stabilitatea ridicată, plaja largă de valori măsurabile și consumul redus de curent. Semnalul de ieșire, transmis prin interfața I2C semnifică umiditatea relativă (\textit{engl. RH}\footnote{Relative Humidity}), definită ca presiunea parțială a vaporilor de apă raportată la presiunea de echilibru pentru o temperatură dată.
+
+\subsection{Percepția vizuală}
+
+Una din cele mai interesante și utile funcții senzoriale pe care le poate avea un robot explorator este captura de imagini sau chiar mai bine, înregistrarea unui flux de imagini. Percepția vizuală a unui spațiu poate oferi informații valoroase despre mediul înconjurător, în special atunci când mediul explorat este inaccesibil sau îndepărtat. În acest scop, am prevăzut robotul cu o cameră de luat vederi \textit{OV7670}, produsă de \textit{OmniVision}, potrivită circumstanțelor în care acesta funcționează.
+
+Camera reprezintă o alternativă eficientă la sistemele scumpe și sofisticate ca LIDAR, atunci când este necesară nu doar determinarea poziției relative a unui obiect, dar și alte caracteristici precum mărimea sau forma. Am decis integrarea acestui modul în proiectul de față din considerente de performanță, dimensiune și consum de curent. Camera \textit{OV7670} optimizează toate aceste criterii, având la bază un de imagine CMOS\footnote{Complementary Metal–Oxide–Semiconductor} capabil de captura de imagini de rezoluție VGA\footnote{Video Graphics Array} (640×480) cu viteza de 30 de cadre pe secundă.
+
+\insfig{camera.jpg}{Camera video \textit{OV7670}}{camera}{0.5}
+
+Modulul oferă posibilitatea de a controla calitatea imaginii, formatul și rata de transfer a informației, precum și capabilități de procesare ce includ controlul timpului de expunere, corecție gama și reglarea saturației și tonalității cromatice.
+
+Pentru a evita câteva prbobleme de sincronizare, camera este prevăzută cu o memorie tampon (\textit{engl. FIFO}\footnote{First In, First Out}) de 3MB \textit{AL422}, fabricată de \textit{AverLogic}. Memoria are capabilitatea de a stoca în întregime un cadru VGA color, asigurând în acest fel evitarea problemelor de rupere a cadrelor.
+
+Comanda acestui dispozitiv de către microcontroller se realizează prin intermediul interfeței SCCB\footnote{Serial Camera Control Bus}, funcțional identică cu magistrala I2C. Transmisia datelor paralelă și sincronă, utilizând 10 linii de date și una pentru semnalul de ceas. Din cauza faptului că interfața serială UART ce leagă microcontrollerul de modulul Wi-Fi nu suportă viteze de transfer suficient de mari, am luat decizia ca citirea imaginilor să fie realizată direct de acesta din urmă, pentru a evita o eventuală congestie (\textit{engl. bottleneck}) a datelor pe magistrala serială.
+
+
+\section{Transferul de date}
+
+Necesitatea robotului de a comunica fără fir cu un calculator a condus la decizia de a folosi pentru transferul de date platforma IoT open source \textit{NodeMCU}, bazată pe modulul Wi-Fi \textit{ESP8266}, proiectat și fabricat de compania \textit{Espressif Systems}.
+
+\insfig{nodemcu.jpg}{Platforma \textit{NodeMCU DEVKIT v1.0}}{nodemcu}{0.5}
+
+Unul din argumente este reprezentat de popularitatea acestui modul în comunitate, ilustrată de apariția pe piață a unei multitudini de platforme construite în jurul său. Argumentele hotărâtoare în alegerea celei mai sus amintite în detrimentul altora au fost reprogramarea facilă prin intermediul adaptorului integrat USB și numărul mare de pini, ce oferă posibilitatea interfațării cu mai multe alte componente.
+
+\subsection{Modulul Wi-Fi ESP8266}
+
+Modulul \textit{ESP8266} este un SoC\footnote{System on a chip} Wi-Fi cu stivă TCP/IP completă, bazat pe un procesor RISC\footnote{Reduced Instruction Set Computer} de 32 de biți. Integrate în modul se află o memorie volatilă de 128kB și o memorie de program de 4MB, suficient pentru a-i permite să realizeze o conexiune Wi-Fi cu un calculator. Interfața aleasă pentru a comunica cu platforma \textit{ARM mbed} este UART, însă, din cauza unor erori de proiectare, nu a fost posibilă folosirea capabilităților hardware pentru UART ale modulului, impunând utilizarea unei implementări în software a acestei interfețe.
+
+
+\section{Montajul}
+
+Componentele descrise mai sus au fost lipite pe un cablaj de test de dimensiunea 16 x 10 cm, ce coincide aproximativ cu dimensiunile șasiului, inclusiv cele două șenile. Drept urmare, am prevăzut cablajul și șasiul cu trei găuri adiționale prin care se poate face prinderea cu distanțiere și șuruburi. Pentru conveniența programării am montat distanțiere și în colțurile plăcii, astfel încât aceasta să poată fi așezată pe o masă, separat de șasiu.
+
+\insfig{lateral.jpg}{Montajul final -- vedere laterală}{montaj}{0.9}
+
+Datorită dimensiunilor comparativ mari și a faptului că trebuie să poată fi demontate de pe placă, am prevăzut platforma \textit{ARM mbed}, modulul Wi-Fi și camera cu socluri adecvate. Pentru firele de alimentare am montat un suport de prindere cu șurub și un întrerupător. Tensiunea maximă admisă pe acestea este de 9.5V, întrucât doar puntea de motoare se alimentează direct, celelalte integrate fiind prevăzute cu regulatoare de tensiune \textit{LM7805} de 5V.
+
+Modulul Wi-Fi funcționează la 3.3V și are propriul regulator de tensiune, însă pentru a evita supraîncălzirea acestuia pinul de alimentare este legat deopotrivă la 5V. Din cauza faptului că alimentarea circuitului și a motoarelor este comună am montat trei condensatori înainte și după regulatoarele de tensiune de 220$\mu$F, respectiv 220$\mu$F și 10$\mu$F. Conectarea motoarelor se realizează, de asemenea, prin suporți de prindere cu șurub, legați direct la ieșirile punții de motoare.
+
+\newpage
+Placa mai are în componență patru senzori IR, dispuși longitudinal, în colțuri, senzorii de lumină ambientală, presiune, temperatură și umiditate descriși mai devreme, precum și un cristal piezoelectric pentru generare de semnale sonore.
+
+Translatarea de nivel de la 5V la 3.3V a semnalului de pe magistrala UART se realizează prin intermediul unui divizor rezistiv de tensiune, iar liniile de ceas și de date ale magistralei I2C sunt legate la rezistori de \textit{pull-up} de 4,7k$\Omega$. Atât cele două magistrale, cât și senzorii de proximitate și intrările punții de motoare sunt conectate la \textit{jumperi}, în scopul unei modularități crescute și unui proces de testare mai facil.
+
+\insfig{frontal.jpg}{Montajul final -- vedere frontală}{montaj2}{0.9}
+
+În ultimul rând, am prevăzut placa cu o diodă LED\footnote{Light-Emitting Diode} de 5mm pentru a vedea dacă alimentarea este pornită accidental atunci când microcontrollerul și modulul Wi-Fi nu sunt pe socluri, iar senzorii IR sunt scoși din funcțiune. Am adăugat, de asemenea, un \textit{status LED} ce este aprins până când pornește sistemul de operare sau în cazul producerii unei erori, și alte două de 10mm cu rol de faruri.
+
+\vspace{\stretch{2}}

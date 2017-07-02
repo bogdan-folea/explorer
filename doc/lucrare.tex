@@ -1,0 +1,149 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                                              %
+%                                                                              %
+%                                                                              %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% A4, double-sided, font 12pt
+\documentclass[a4paper,12pt,twoside]{report}
+
+\usepackage[top=3.81cm,bottom=3cm,inner=3.5cm,outer=2.54cm]{geometry}
+
+% Actual font selection
+\usepackage{pxfonts} % bookman | pxfonts | cmbright
+
+% Include support for romanian hyphenation (if installed on your sistem)
+\usepackage[romanian]{babel}
+
+% Include support for correct printing of romanian characters
+\usepackage[T1]{fontenc}
+\usepackage{ucs}
+\usepackage[utf8x]{inputenc}
+
+% Include support for graphics
+\usepackage[pdftex]{color,graphicx}
+
+% Include support for columns
+\usepackage{multicol}
+
+% Text alignment
+\usepackage{ragged2e}
+
+\usepackage{floatrow}
+
+\usepackage{tabularx}
+\renewcommand\tabularxcolumn[1]{>{\Centering}m{#1}}
+
+% Include support for hyperlinks in the document
+\usepackage{hyperref}
+\hypersetup{unicode=true,%
+	colorlinks=true,%
+	citecolor=black,%
+	filecolor=black,%
+	linkcolor=black,%
+	urlcolor=black}
+
+\setcounter{tocdepth}{3}
+
+% Simboluri grecești
+\usepackage{upgreek}
+
+% Indent first paragraph
+\usepackage{indentfirst}
+
+% Appendices
+\usepackage[titletoc]{appendix}
+
+% Paragraph
+\usepackage{parskip}
+\setlength{\parindent}{2em}
+
+% Comandă inserare figură
+\newcommand{\insfig}[4]{
+	\begin{figure}[!htb]
+		\begin{center}
+			\includegraphics[width=#4\textwidth]{figuri/#1}
+			\caption{#2\label{#3}}
+	    \end{center}
+	\end{figure}
+}
+
+% Comandă inserare figură cu sursă
+\newcommand{\insfigs}[5]{
+	\begin{figure}[!htb]
+		\begin{center}
+			\includegraphics[width=#5\textwidth]{figuri/#1}
+			\caption[#2 \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ 
+			\-\ \-\ \-\ \-\ \-\ \-\ \-\ \-\ \protect\linebreak Sursa: #3]{#2\label{#4}}
+	    \end{center}
+	\end{figure}
+}
+
+% Setting headers
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhead{}
+\fancyhead[LE]{\nouppercase{\leftmark}}
+\fancyhead[RO]{\nouppercase{\rightmark}}
+
+% Set spacing at 1.5lines
+\linespread{1.2}
+
+% Document begins here
+\begin{document}
+
+% Create title page
+\include{coperta}
+
+% Leave a blank page for double side printing
+%\thispagestyle{empty}
+%\newpage
+%\hbox{}
+
+% Abstract
+\include{abstract}
+
+% Leave a blank page for double side printing
+%\thispagestyle{empty}
+%\newpage
+%\hbox{}
+
+% Cuprins
+\newpage
+\setcounter{page}{1}
+{\large
+    \tableofcontents
+}
+
+% Capitole
+\include{capitole/1-introducere}
+\include{capitole/2-hardware}
+\include{capitole/3-software}
+\include{capitole/4-rezultate}
+\include{capitole/5-concluzii}
+
+% Leave a blank page for double side printing
+%\thispagestyle{empty}
+%\newpage
+%\hbox{}
+
+% Include bibliography
+\setlength{\parskip}{6pt}\include{bibliografie}
+
+% Leave a blank page for double side printing
+%\thispagestyle{empty}
+%\newpage
+%\hbox{}
+
+% Include list of figures
+\clearpage
+\addcontentsline{toc}{chapter}{Listă de figuri}
+%\small\listoffigures
+\listoffigures
+
+% Include appendix
+\begin{appendices}
+\include{anexe/circuit}
+\end{appendices}
+
+\end{document}
