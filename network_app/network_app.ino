@@ -3,7 +3,7 @@
 #include <WiFiUdp.h>
 #include <SoftwareSerial.h>
 
-#define DEBUG
+//#define DEBUG
 
 WiFiUDP udp;
 
@@ -11,8 +11,10 @@ SoftwareSerial swSerial(5, 4, false, 256);
 
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
 boolean client_exists = false;
+IPAddress clientIP;
+unsigned int clientPort;
 
-char RXBuffer[20];
+char RXBuffer[UDP_TX_PACKET_MAX_SIZE];
 unsigned int crt = 0;
 boolean valid = false;
 
@@ -55,6 +57,8 @@ void loop()
     int packetSize = udp.parsePacket();
     if( packetSize > 0 ){
         client_exists = true;
+        clientIP = udp.remoteIP();
+        clientPort = udp.remotePort();
         
         #ifdef DEBUG
             Serial.print("Received packet: ");
@@ -81,11 +85,11 @@ void loop()
             swSerial.write(packetBuffer[packetSize-1]);
     
             #ifdef DEBUG
-                Serial.println(packetBuffer);
+                Serial.println( packetBuffer );
                 
                 // Send a reply to the sender IP address and port.
                 udp.beginPacket( udp.remoteIP(), udp.remotePort() );
-                
+
                 switch( packetBuffer[packetSize-1] ){
                     case 'f': udp.write("fwd");
                               break;
@@ -101,7 +105,6 @@ void loop()
             #endif
         }
     }
-    udp.flush();
 
     /*
      * FreeRTOS -> Linux
@@ -112,15 +115,19 @@ void loop()
         if( recv == 'S' ){
             valid = true;
             crt = 0;
-        } else if( recv == '\0' ){
+        } else if( valid == true && recv == '\n' ){
             RXBuffer[ crt ] = '\0';
             
             /* Forward information to any known client. */
             if( client_exists == true ){
-                udp.beginPacket( udp.remoteIP(), udp.remotePort() );
+                #ifdef DEBUG
+                    Serial.print( "Received from MCU: " );
+                    Serial.println( RXBuffer );
+                #endif
+                
+                udp.beginPacket( clientIP, clientPort );
                 udp.write( RXBuffer );
                 udp.endPacket();
-                udp.flush();
             }
             valid = false;
             crt = 0;
@@ -128,4 +135,5 @@ void loop()
             RXBuffer[ crt++ ] = recv;
         }
     }
+    udp.flush();
 }

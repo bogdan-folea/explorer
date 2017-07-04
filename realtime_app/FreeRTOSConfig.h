@@ -32,10 +32,9 @@
 #define configUSE_APPLICATION_TASK_TAG	 1
 #define configUSE_COUNTING_SEMAPHORES	 1
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
-
-/* Co-routine definitions. */
 #define configUSE_CO_ROUTINES 			 0
-#define configMAX_CO_ROUTINE_PRIORITIES  ( 2 )
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1
+#define configGENERATE_RUN_TIME_STATS	        0
 
 /* Software timer definitions. */
 #define configUSE_TIMERS				 1
@@ -43,41 +42,18 @@
 #define configTIMER_QUEUE_LENGTH		 10
 #define configTIMER_TASK_STACK_DEPTH	 ( configMINIMAL_STACK_SIZE * 2 )
 
-/* Set the following definitions to 1 to include the API function, or zero
-to exclude the API function. */
-#define INCLUDE_vTaskPrioritySet		   1
-#define INCLUDE_uxTaskPriorityGet		   1
-#define INCLUDE_vTaskDelete				   1
-#define INCLUDE_vTaskCleanUpResources	   1
-#define INCLUDE_vTaskSuspend			   1
-#define INCLUDE_vTaskDelayUntil			   1
-#define INCLUDE_vTaskDelay				   1
-#define INCLUDE_eTaskGetState			   1
-#define INCLUDE_xTimerPendFunctionCall     1
-#define INCLUDE_vTaskSetApplicationTaskTag 1
-
-/* This demo makes use of one or more example stats formatting functions.  These
-format the raw data provided by the uxTaskGetSystemState() function in to human
-readable ASCII form.  See the notes in the implementation of vTaskList() within
-FreeRTOS/Source/tasks.c for limitations. */
-#define configUSE_STATS_FORMATTING_FUNCTIONS   1
-
-/* Run time stats gathering definitions. */
-#ifdef __ICCARM__
-	/* The #ifdef just prevents this C specific syntax from being included in
-	assembly files. */
-	void vMainConfigureTimerForRunTimeStats( void );
-	unsigned long ulMainGetRunTimeCounterValue( void );
-#endif
-#ifdef __GNUC__
-	/* The #ifdef just prevents this C specific syntax from being included in
-	assembly files. */
-	void vMainConfigureTimerForRunTimeStats( void );
-	unsigned long ulMainGetRunTimeCounterValue( void );
-#endif
-#define configGENERATE_RUN_TIME_STATS	0
-#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() //vMainConfigureTimerForRunTimeStats()
-#define portGET_RUN_TIME_COUNTER_VALUE() //ulMainGetRunTimeCounterValue()
+/* Included/excluded API functions. */
+#define INCLUDE_vTaskPrioritySet		        1
+#define INCLUDE_uxTaskPriorityGet		        1
+#define INCLUDE_vTaskDelete				        1
+#define INCLUDE_vTaskCleanUpResources	        1
+#define INCLUDE_vTaskSuspend			        1
+#define INCLUDE_vTaskDelayUntil			        1
+#define INCLUDE_vTaskDelay				        1
+#define INCLUDE_eTaskGetState			        1
+#define INCLUDE_xTimerPendFunctionCall          1
+#define INCLUDE_vTaskSetApplicationTaskTag      1
+#define INCLUDE_xTaskGetTickCount               1
 
 /* Cortex-M specific definitions. */
 #ifdef __NVIC_PRIO_BITS
@@ -115,13 +91,10 @@ standard names. */
 #define xPortSysTickHandler SysTick_Handler
 
 /* Context switch trace macros */
-extern void switchIN(uint32_t);
+extern void switchIN( uint32_t );
 extern void switchOUT();
 
 #define traceTASK_SWITCHED_IN() 	switchIN( (uint32_t)pxCurrentTCB->pxTaskTag )
-#define traceTASK_SWITCHED_OUT()	switchOUT()
-
-//#undef traceTASK_SWITCHED_IN
-//#undef traceTASK_SWITCHED_OUT									
+#define traceTASK_SWITCHED_OUT()	switchOUT()			
 										
 #endif /* FREERTOS_CONFIG_H */

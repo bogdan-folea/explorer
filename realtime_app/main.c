@@ -45,6 +45,13 @@ static void prvHumidityTask( void );
 
 /* Other required resources. */
 volatile uint8_t direction = 'x';
+volatile uint8_t forward_block = 0;
+volatile uint8_t backward_block = 0;
+
+QueueHandle_t xSerialQueue;
+
+TimerHandle_t xTimer;
+TimerHandle_t xBuzzer;
 
 EventGroupHandle_t xCommandEvent;
 #define MoveForwardBit      ( 1 << 2 )
@@ -52,18 +59,19 @@ EventGroupHandle_t xCommandEvent;
 #define MoveLeftBit         ( 1 << 4 )
 #define MoveRightBit        ( 1 << 5 )
 
-EventGroupHandle_t xSerialEvent;
-#define SerialEventBit      ( 1 << 2 )
+SemaphoreHandle_t xForwardSemaphore, xBackwardSemaphore;
 
 typedef struct message_t{
+    uint8_t size;
     uint8_t payload[20];
 } message_t;
 
-#define MOVING_SPEED        ( 35 )
-#define ROTATE_SPEED        ( 55 )
+#define MOVING_SPEED        ( 100 )
+#define ROTATE_SPEED        ( 100 )
 
-#define GPIO_INT (1 << 9)   // GPIO interrupt is on p0.9
-#define OUTPIN	 (1 << 8)   // outpin on p0.8
+#define SOUND_ENABLED
+
+#define BMP280_ADDR    ( 0x76 >> 1 )
 
 #define SBIT_CNTEN     0
 #define SBIT_PWMEN     2
@@ -88,58 +96,78 @@ typedef struct message_t{
 void switchIN(uint32_t tag)
 {
     switch( tag ){
-    case 1: GPIO_SetValue( 1, (1 << 18) );
+    case 1: GPIO_SetValue( 1, ( 1 << 18 ) );
             break;
-    case 2: GPIO_SetValue( 1, (1 << 20) );
+    case 2: GPIO_SetValue( 1, ( 1 << 20 ) );
             break;
-    case 3: GPIO_SetValue( 1, (1 << 21) );
+    case 3: GPIO_SetValue( 1, ( 1 << 21 ) );
             break;
-    case 4: GPIO_SetValue( 1, (1 << 23) );
+    case 4: GPIO_SetValue( 1, ( 1 << 23 ) );
             break;
     }    
 }
 
 void switchOUT()
 {
-    GPIO_ClearValue( 1, (1 << 18) );
-    GPIO_ClearValue( 1, (1 << 20) );
-    GPIO_ClearValue( 1, (1 << 21) );
-    GPIO_ClearValue( 1, (1 << 23) );
+    //GPIO_ClearValue( 1, ( 1 << 18 ) );
+    GPIO_ClearValue( 1, ( 1 << 20 ) );
+    GPIO_ClearValue( 1, ( 1 << 21 ) );
+    GPIO_ClearValue( 1, ( 1 << 23 ) );
 }
 
 /*-----------------------------------------------------------------------------------*/
 
-/* External interrupt handler. */
+/* The error hook. */
 
-void EINT3_IRQHandler(void){
-	#if 0
-	LPC_GPIOINT->IO0IntClr=(1 << 9);
+void prvErrorHook( void )
+{
+    LPC_GPIO0->FIODIR &= ~(1 << 4);
+    while(1);
+}
+
+/*-----------------------------------------------------------------------------------*/
+
+/* Timer callback functions. */
+
+void vTimerCallback( TimerHandle_t pxTimer )
+{
+    volatile TickType_t xTime, xSeconds, xMinutes, xHours;
+    BaseType_t xResult;
+        
+    xTime = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000;
+    xHours = xTime / 3600;
+    xMinutes = ( xTime / 60 ) % 60;
+    xSeconds = xTime % 60;
+
+    message_t xMessage;
+    xMessage.size = 8;
+	xMessage.payload[0] = 'S';
+	xMessage.payload[1] = 'U';
+	xMessage.payload[2] = '0' + xHours % 10;
+	xMessage.payload[3] = '0' + ( xMinutes / 10 ) % 10;
+	xMessage.payload[4] = '0' + xMinutes % 10;
+	xMessage.payload[5] = '0' + ( xSeconds / 10 ) % 10;
+	xMessage.payload[6] = '0' + xSeconds % 10;
+	xMessage.payload[7] = '\n';
 	
-	if( toggle == 0 ){
-		LPC_GPIO1->FIOSET |= LED4;
-		LPC_GPIO0->FIOSET |= (1 << 8);
-		toggle = 1;
-	}else{
-		LPC_GPIO1->FIOCLR |= LED4;
-		LPC_GPIO0->FIOCLR |= (1 << 8);		
-		toggle = 0;
+	xResult = xQueueSend( xSerialQueue, /** Queue to send to. */
+                          ( void * ) &xMessage, /** Message. */
+                          (TickType_t) 0 ); /** Do not block. */
+	
+	if( xResult != pdPASS ){
+	    /* Failed to post message to queue. */
+	    prvErrorHook();
 	}
-	
-	LPC_GPIO0->FIOSET |= (1 << 8);
-	
-	/*
-	if (LPC_GPIO1->FIOPIN & (1 << 18))
-    {
-        LPC_GPIO1->FIOCLR |= (1 << 18);
-    }
-    else
-    {
-        LPC_GPIO1->FIOSET |= (1 << 18);
-    }*/
-    #endif
+}
+
+void vBuzzerCallback( TimerHandle_t pxTimer )
+{
+    GPIO_ClearValue( 0, ( 1 << 5 ) );
 }
 
 /*-----------------------------------------------------------------------------------*/
+
+/* PWM related functions. */
 
 void SetDutyCycle(uint32_t m11, uint32_t m12, uint32_t m21, uint32_t m22)
 {
@@ -165,24 +193,83 @@ void EnablePWM()
                     ( 1 << SBIT_PWMENA4 );
 }
 
+/*-----------------------------------------------------------------------------------*/
+
+/* External interrupt handler. */
+
+void EINT3_IRQHandler( void )
+{
+    uint8_t sound = 0;
+
+    portDISABLE_INTERRUPTS();
+    LPC_GPIO1->FIOSET |= ( 1 << 18 );
+    
+    BaseType_t xResult, xHigherPriorityTaskWoken = pdFALSE;
+    
+    LPC_GPIOINT->IO0IntClr |= ( 1 << 8 );
+    LPC_GPIOINT->IO0IntClr |= ( 1 << 9 );
+    
+    if( ( LPC_GPIO0->FIOPIN & ( 1 << 8 ) ) == 0 && direction == 'f' ){
+        SetDutyCycle( 0, 0, 0, 0);
+        EnablePWM();
+        direction = 'x';
+        sound = 1;
+    }
+    
+    if( ( LPC_GPIO0->FIOPIN & ( 1 << 9 ) ) == 0 && direction == 'b' ){
+        SetDutyCycle( 0, 0, 0, 0);
+        EnablePWM();
+        direction = 'x';
+        sound = 1;
+    }
+    
+    #ifdef SOUND_ENABLED
+        if( sound == 1 ){
+            GPIO_SetValue( 0, ( 1 << 5 ) );
+            
+            xResult = xTimerStartFromISR( xBuzzer, /* The timer being started. */
+                                          &xHigherPriorityTaskWoken ); /* Check context. */
+            
+            if( xResult != pdPASS ){
+                //prvErrorHook();
+            }
+        }
+    #endif
+    
+    LPC_GPIO1->FIOCLR |= ( 1 << 18 );
+    portENABLE_INTERRUPTS();
+    
+    /* Perform a context switch if needed. */
+    portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+}
+
+/*-----------------------------------------------------------------------------------*/
+
 void SetupHardware()
 {
-    
+    /* Pin multiplexing configuration. */
 	PINSEL_CFG_Type PinCfg;
 	
 	/* Enable built-in LEDs. */
-	GPIO_SetDir( 1, (1 << 18), 1 );
-    GPIO_SetDir( 1, (1 << 20), 1 );
-    GPIO_SetDir( 1, (1 << 21), 1 );
-    GPIO_SetDir( 1, (1 << 23), 1 );
+	GPIO_SetDir( 1, ( 1 << 18 ), 1 );
+    GPIO_SetDir( 1, ( 1 << 20 ), 1 );
+    GPIO_SetDir( 1, ( 1 << 21 ), 1 );
+    GPIO_SetDir( 1, ( 1 << 23 ), 1 );
+    
+    /* Enable buzzer and light pins. */
+    GPIO_SetDir( 0, ( 1 << 5 ), 1 );
+    //GPIO_SetDir( 0, (1 << 8), 1 ); !!
+    //GPIO_SetDir( 0, (1 << 9), 1 ); !!
 	
 	/* Enable external interrupt. */
-	//LPC_GPIO0->FIODIR |= (1 << 8);
-	//LPC_GPIO0->FIODIR &= ~GPIO_INT;
-	//LPC_GPIO1->FIODIR |= LED1;
-	//Enable interrupt
-	//LPC_GPIOINT->IO0IntEnR |=(1<<9);
-	//NVIC_EnableIRQ(EINT3_IRQn);
+	LPC_GPIO0->FIODIR &= ~( 1 << 8 );
+	LPC_GPIO0->FIODIR &= ~( 1 << 9 );
+	LPC_GPIOINT->IO0IntEnR |= ( 1 << 8 );
+	LPC_GPIOINT->IO0IntEnF |= ( 1 << 8 );
+	LPC_GPIOINT->IO0IntEnR |= ( 1 << 9 );
+	LPC_GPIOINT->IO0IntEnF |= ( 1 << 9 );
+	NVIC_SetPriority(EINT3_IRQn, 6);
+	NVIC_EnableIRQ(EINT3_IRQn);
 	
     /* Enable Counters and the PWM module. */
 	LPC_PINCON->PINSEL4 = 0x55; 
@@ -193,7 +280,7 @@ void SetupHardware()
     LPC_PWM1->MCR = ( 1 << SBIT_PWMMR0R );  /** Reset on PWMMR0. */
 	
 	/* Set PWM duty cycle. */
-	LPC_PWM1->MR0 = 100;    
+	LPC_PWM1->MR0 = 100;   
     SetDutyCycle( 0, 0, 0, 0 );
 	
 	/* Enable PWM. */
@@ -207,10 +294,22 @@ void SetupHardware()
 	PinCfg.Portnum = 0;
 	PINSEL_ConfigPin(&PinCfg);
 	
-	/* Set ADC conversion rate to 200Hz. */
-	ADC_Init( LPC_ADC, 200 );
+	/* Set ADC conversion rate to 200kHz. */
+	ADC_Init( LPC_ADC, 200000 );
 	ADC_IntConfig( LPC_ADC, ADC_ADINTEN0 ,DISABLE );
 	ADC_ChannelCmd( LPC_ADC, ADC_CHANNEL_0, ENABLE );
+	
+	/* I2C Configuration. */
+	PinCfg.OpenDrain = PINSEL_PINMODE_OPENDRAIN;
+	PinCfg.Pinmode = PINSEL_PINMODE_PULLUP;
+	PinCfg.Funcnum = 2;
+	PinCfg.Pinnum = 10;
+	PinCfg.Portnum = 0;
+	PINSEL_ConfigPin(&PinCfg);
+	PinCfg.Pinnum = 11;
+	PINSEL_ConfigPin(&PinCfg);
+	I2C_Init( LPC_I2C2, 100000 );
+	I2C_Cmd( LPC_I2C2, I2C_MASTER_MODE, ENABLE );
     
     /* UART Configuration. */
 	UART_CFG_Type UARTConfigStruct;
@@ -337,9 +436,38 @@ int main( void )
     if( xCommandEvent == NULL )
     {
         /* Insufficient heap memory available. */
-        LPC_GPIO0->FIODIR |= (1 << 4);
-	    LPC_GPIO0->FIOSET |= (1 << 4);
+        prvErrorHook();
     }
+    
+    xSerialQueue = xQueueCreate( 10, sizeof( message_t ) );
+    if( xSerialQueue == 0 ){
+        prvErrorHook();
+    }
+    
+    xTimer = xTimerCreate( "Timer", /** Text name not used by the kernel. */
+                           1000 * portTICK_PERIOD_MS, /** Set timer period to 1s. */
+                           pdTRUE, /** Configure as a recurring timer. */
+                           ( void * ) 0, /** ID of the timer. */
+                           vTimerCallback ); /** Timer callback function. */
+	
+	xBuzzer = xTimerCreate( "BuzzerTimer", /** Text name not used by the kernel. */
+                            500 * portTICK_PERIOD_MS, /** Set timer period to 500ms. */
+                            pdFALSE, /** Configure as a non-recurring timer. */
+                            ( void * ) 1, /** ID of the timer. */
+                            vBuzzerCallback ); /** Timer callback function. */
+	
+	xForwardSemaphore = xSemaphoreCreateBinary();
+	xBackwardSemaphore = xSemaphoreCreateBinary();
+	
+	BaseType_t xResult;
+	xResult = xSemaphoreGive( xForwardSemaphore );
+	if( xResult != pdPASS ){
+	    prvErrorHook();
+	}
+	xResult = xSemaphoreGive( xBackwardSemaphore );
+	if( xResult != pdPASS ){
+	    prvErrorHook();
+	}
 	
 	/* Wait for other devices to initialize. */
 	uint32_t i = 0;
@@ -357,7 +485,7 @@ int main( void )
 	/* If all is well, the scheduler will now be running, and the following line will
 	never be reached.  If the following line does execute, then there was insufficient
 	FreeRTOS heap memory available for the idle and/or timer tasks to be created. */
-	while(1);
+	prvErrorHook();
 }
 
 /*-----------------------------------------------------------------------------------*/
@@ -371,16 +499,20 @@ static void prvMotorTask( void )
                                       MoveForwardBit | MoveBackBit | MoveLeftBit | MoveRightBit, /* Events to wait for. */
                                       pdTRUE, /* Clear events before returning. */
                                       pdFALSE, /* Wait for either event. */
-                                      150 * portTICK_PERIOD_MS ); /* Set the timeout to 200ms. */
+                                      100 * portTICK_PERIOD_MS ); /* Set the timeout to 200ms. */
         
         if( ( uxBits & MoveForwardBit ) != 0 ){
-            SetDutyCycle( MOVING_SPEED, 0, MOVING_SPEED , 0 );
-            EnablePWM();
-            direction = 'f';
+            if( ( LPC_GPIO0->FIOPIN & ( 1 << 8 ) ) ){
+                SetDutyCycle( MOVING_SPEED, 0, MOVING_SPEED , 0 );
+                EnablePWM();
+                direction = 'f';
+            }
         } else if( ( uxBits & MoveBackBit ) != 0 ){
-            SetDutyCycle( 0, MOVING_SPEED, 0, MOVING_SPEED );
-            EnablePWM();
-            direction = 'b';
+            if( ( LPC_GPIO0->FIOPIN & ( 1 << 9 ) ) ){
+                SetDutyCycle( 0, MOVING_SPEED, 0, MOVING_SPEED );
+                EnablePWM();
+                direction = 'b';
+            }
         } else if( ( uxBits & MoveLeftBit ) != 0 ){
             SetDutyCycle( ROTATE_SPEED, 0, 0, ROTATE_SPEED );
             EnablePWM();
@@ -420,7 +552,7 @@ static void prvSerialRecvTask( void )
 	        case 'r': xEventGroupSetBits( xCommandEvent, /* Event group being updated. */
                                           MoveRightBit ); /* Event being set. */
 	                  break;
-	        default: LPC_GPIO0->FIOSET |= (1 << 4);
+	        default: prvErrorHook();
 	        }
 		} else {
 		    vTaskDelay( 100 * portTICK_PERIOD_MS ); /** Sleep 100ms. */
@@ -432,12 +564,30 @@ static void prvSerialRecvTask( void )
 /*-----------------------------------------------------------------------------------*/
 
 static void prvSerialSendTask( void )
-{	
+{
+    BaseType_t xResult;
+    message_t xMessage;
+    
+    /* Send initial message. */
 	UART_Send(LPC_UART3, (uint8_t*)"START\0", 6, BLOCKING);
 	
+	xResult = xTimerStart( xTimer, /* The timer being started. */
+                           (TickType_t) 0 ); /** Do not block. */
+	
+	if( xResult == pdFAIL ){
+	    prvErrorHook();
+	}
+	
 	do{
-		// send message from queue		
-		vTaskDelay( 1000 * portTICK_PERIOD_MS ); /** Sleep 10ms. */
+	    /* Get next message from queue. */
+		xResult = xQueueReceive( xSerialQueue, /** Queue to receive from. */
+                                 &xMessage, /** Message. */
+                                 100 * portTICK_PERIOD_MS ); /** Block for 100ms. */
+	    
+	    if( xResult == pdTRUE ){
+            /* Send message over UART. */
+            UART_Send(LPC_UART3, xMessage.payload, xMessage.size, BLOCKING);
+        }
 	}while(1);
 }
 
@@ -445,7 +595,47 @@ static void prvSerialSendTask( void )
 
 static void prvGatekeeperTask( void )
 {
-	do{	
+    I2C_M_SETUP_Type transferCfg;
+    
+	do{
+	    uint8_t  recv, iocon_cfg[2] = { ( 0x0E << 3 ), 0x00 };
+	    
+	    /* Write to I2C. */
+	    transferCfg.sl_addr7bit = BMP280_ADDR;
+	    transferCfg.tx_data = (uint8_t *)iocon_cfg;
+	    transferCfg.tx_length = sizeof(iocon_cfg);
+	    transferCfg.rx_data = NULL;
+	    transferCfg.rx_length = 0;
+	    transferCfg.retransmissions_max = 2;
+	    
+	    I2C_MasterTransferData( LPC_I2C2, &transferCfg, I2C_TRANSFER_POLLING );
+	    
+	    /* Read from I2C. */
+	    transferCfg.sl_addr7bit = BMP280_ADDR;
+	    transferCfg.tx_data = (uint8_t *)iocon_cfg;
+	    transferCfg.tx_length = 1;
+	    transferCfg.rx_data = (uint8_t *)&recv;
+	    transferCfg.rx_length = 1;
+	    transferCfg.retransmissions_max = 2;
+	    
+	    I2C_MasterTransferData( LPC_I2C2, &transferCfg, I2C_TRANSFER_POLLING );
+	    
+	    message_t xMessage;
+		xMessage.size = 4;
+		xMessage.payload[0] = 'S';
+		xMessage.payload[1] = 'P';
+		xMessage.payload[2] = recv;
+		xMessage.payload[3] = '\n';
+		
+		xResult = xQueueSend( xSerialQueue, /** Queue to send to. */
+                              ( void * ) &xMessage, /** Message. */
+                              (TickType_t) 0 ); /** Do not block. */
+		
+		if( xResult != pdPASS ){
+		    /* Failed to post message to queue. */
+		    prvErrorHook();
+		}
+	    
         vTaskDelay( 1000 * portTICK_PERIOD_MS ); /** Sleep 10ms. */
 	}while(1);
 }
@@ -454,47 +644,61 @@ static void prvGatekeeperTask( void )
 
 static void prvLightTask( void )
 {
-    UART_Send(LPC_UART3, (uint8_t*)"TEsTING\0", 8, BLOCKING);
-    
     uint32_t adc_value;
-    double lux_value;
+    BaseType_t xResult;
+    uint32_t i;
     
 	do{
-        /* Start conversion. */
-		ADC_StartCmd( LPC_ADC, ADC_START_NOW );
+	    for( i = 0; i < 3; i++ ){
+            /* Start conversion. */
+		    ADC_StartCmd( LPC_ADC, ADC_START_NOW );
 		
-		/* Wait for conversion to complete. */
-		while (!(ADC_ChannelGetStatus( LPC_ADC, ADC_CHANNEL_0, ADC_DATA_DONE )));
+		    /* Wait for conversion to complete. */
+		    while( !(ADC_ChannelGetStatus( LPC_ADC, ADC_CHANNEL_0, ADC_DATA_DONE )));
 		
-		/* Read value. */
-		adc_value = ADC_ChannelGetData( LPC_ADC, ADC_CHANNEL_0 );
-		
-		/* Convert value to lux. */
-		lux_value = (double)200 * adc_value / 4096;
-		
-		lux_value = lux_value;
-		if( lux_value < 2000 ){
-	        //LPC_GPIO0->FIOSET |= (1 << 4);
-	        LPC_GPIO0->FIODIR &= ~(1 << 4);
+		    /* Read value. */
+		    if( i == 0 ){
+		        adc_value = ADC_ChannelGetData( LPC_ADC, ADC_CHANNEL_0 );
+		    } else {
+		        adc_value += ADC_ChannelGetData( LPC_ADC, ADC_CHANNEL_0 );
+		    }
+		    
+		    /* Delay. */
+		    if( i < 2 ){		    
+		        vTaskDelay( 100 * portTICK_PERIOD_MS ); /** Sleep 100ms. */
+		    }
 		}
 		
-		/* Convert to string. */
-		uint8_t message[8];
+        adc_value /= 5;
 		
-		message[0] = 'S';
-		message[1] = 'L';
-		message[2] = '0' + adc_value % 10;
-		message[3] = '0' + ( adc_value / 10 ) % 10;
-		message[4] = '0' + ( adc_value / 100 ) % 10;
-		message[5] = '0' + ( adc_value / 1000 ) % 10;
-		message[6] = '\n';
-		message[7] = '\0';
+		if( adc_value < 15 ){
+		    //GPIO_SetValue( 0, (1 << 8) ); !!
+		    //GPIO_SetValue( 0, (1 << 9) ); !!
+		} else {
+		    //GPIO_ClearValue( 0, (1 << 8) ); !!
+		    //GPIO_ClearValue( 0, (1 << 9) ); !!
+		}
 		
-		//UART_Send(LPC_UART3, (uint8_t*)"SL", 2, BLOCKING);
-		//UART_Send(LPC_UART3, value, 4, BLOCKING);
-		UART_Send(LPC_UART3, message, 7, BLOCKING);
+		message_t xMessage;
+		xMessage.size = 7;
+		xMessage.payload[0] = 'S';
+		xMessage.payload[1] = 'L';
+		xMessage.payload[2] = '0' + ( adc_value / 1000 ) % 10;
+		xMessage.payload[3] = '0' + ( adc_value / 100 ) % 10;
+		xMessage.payload[4] = '0' + ( adc_value / 10 ) % 10;
+		xMessage.payload[5] = '0' + adc_value % 10;
+		xMessage.payload[6] = '\n';
 		
-		vTaskDelay( 1000 * portTICK_PERIOD_MS ); /** Sleep 100ms. */
+		xResult = xQueueSend( xSerialQueue, /** Queue to send to. */
+                              ( void * ) &xMessage, /** Message. */
+                              (TickType_t) 0 ); /** Do not block. */
+		
+		if( xResult != pdPASS ){
+		    /* Failed to post message to queue. */
+		    prvErrorHook();
+		}
+		
+		vTaskDelay( 200 * portTICK_PERIOD_MS ); /** Sleep 200ms. */
 	}while(1);
 }
 
@@ -521,8 +725,6 @@ static void prvPressureTask( void )
 static void prvHumidityTask( void )
 {
 	do{
-	    uint32_t i = 1000000;
-	    while(i--);
-        //vTaskDelay( 1000 * portTICK_PERIOD_MS ); /** Sleep 10ms. */
+        vTaskDelay( 1000 * portTICK_PERIOD_MS ); /** Sleep 10ms. */
 	}while(1);
 }
