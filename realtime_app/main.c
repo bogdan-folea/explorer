@@ -486,6 +486,8 @@ int main( void )
 	never be reached.  If the following line does execute, then there was insufficient
 	FreeRTOS heap memory available for the idle and/or timer tasks to be created. */
 	prvErrorHook();
+	
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------------*/
@@ -596,6 +598,7 @@ static void prvSerialSendTask( void )
 static void prvGatekeeperTask( void )
 {
     I2C_M_SETUP_Type transferCfg;
+	BaseType_t xResult;
     
 	do{
 	    uint8_t  recv, iocon_cfg[2] = { ( 0x0E << 3 ), 0x00 };

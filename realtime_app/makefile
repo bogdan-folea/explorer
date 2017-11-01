@@ -7,29 +7,30 @@
 #                                                                              #
 ################################################################################
 
-PROJECT   := explorer
-PLATFORM  := LPC1768
-CPU       := ARM_CM3
+PROJECT  := explorer
+PLATFORM := LPC1768
+CPU      := ARM_CM3
 
-EXE := $(PROJECT).elf
+ELF := $(PROJECT).elf
 MAP := $(PROJECT).map
 BIN := $(PROJECT).bin
 LST := $(PROJECT).lst
 
 # Default compiler
-compiler := GCC
+compiler ?= GCC
 
 # List of supported compilers
 compilers_list := GCC IAR
 
 # Compiler check
 ifneq ($(filter $(compiler),$(compilers_list)),$(compiler))
-$(error Undefined compiler type: '$(compiler)', use one from: $(compilers_list))
+    $(warning Supported compilers: $(compilers_list))
+    $(error Undefined compiler: '$(compiler)')
 endif
 
 # FreeRTOS kernel path check
 ifeq (,$(FREERTOS_KERNEL_PATH))
-$(error Environment variable FREERTOS_KERNEL_PATH must be set)
+    $(error Environment variable FREERTOS_KERNEL_PATH not set)
 endif
 
 # Common directories containing source/header files
@@ -44,20 +45,26 @@ ifeq ($(compiler),GCC)
 
 # Compiler path check
 ifeq (,$(GCCARM_TOOLCHAIN_PATH))
-    $(error Environment variable GCCARM_TOOLCHAIN_PATH must be set)
+    $(error Environment variable GCCARM_TOOLCHAIN_PATH not set)
 endif
 ifneq (1,$(words [$(GCCARM_TOOLCHAIN_PATH)]))
-	$(error Spaces are not allowed in the GCCARM_TOOLCHAIN_PATH)
+    $(error Spaces are not allowed in the GCCARM_TOOLCHAIN_PATH)
 endif
 
-GCCARM := $(subst \,/,$(GCCARM_TOOLCHAIN_PATH))
+GCCARM_TOOLCHAIN_PATH := $(subst \,/,$(GCCARM_TOOLCHAIN_PATH))
+
+# Compiler prefix check
+ifeq (,$(GCCARM_TOOLCHAIN_PREFIX))
+    $(warning Environment variable GCCARM_TOOLCHAIN_PREFIX not set)
+    GCCARM_TOOLCHAIN_PREFIX := "arm-none-eabi"
+endif
 
 # Compiler/Assembler/Linker paths
-CC      := $(GCCARM)/bin/arm-none-eabi-gcc
-AS      := $(GCCARM)/bin/arm-none-eabi-gcc
-LD      := $(GCCARM)/bin/arm-none-eabi-gcc
-OBJCOPY := $(GCCARM)/bin/arm-none-eabi-objcopy
-OBJDUMP := $(GCCARM)/bin/arm-none-eabi-objdump
+CC := $(GCCARM_TOOLCHAIN_PATH)/bin/$(GCCARM_TOOLCHAIN_PREFIX)-gcc
+AS := $(GCCARM_TOOLCHAIN_PATH)/bin/$(GCCARM_TOOLCHAIN_PREFIX)-gcc
+LD := $(GCCARM_TOOLCHAIN_PATH)/bin/$(GCCARM_TOOLCHAIN_PREFIX)-gcc
+OC := $(GCCARM_TOOLCHAIN_PATH)/bin/$(GCCARM_TOOLCHAIN_PREFIX)-objcopy
+OD := $(GCCARM_TOOLCHAIN_PATH)/bin/$(GCCARM_TOOLCHAIN_PREFIX)-objdump
 
 # Compiler/Assembler/Linker flags
 CFLAGS := -mthumb -mcpu=cortex-m3 -g3 -Os -Wall
@@ -70,16 +77,16 @@ ASFLAGS += -c -x assembler-with-cpp -nostdlib
 
 LDFLAGS := -mthumb -mcpu=cortex-m3 -g3 -gdwarf-2
 LDFLAGS += -Wl,-Map,$(MAP) -specs=nosys.specs
-LDFLAGS += -L $(GCCARM)/arm-none-eabi/lib/armv7-m
+#fara -specs=nosys.specs pentru linaro
+LDFLAGS += -L $(GCCARM_TOOLCHAIN_PATH)/$(GCCARM_TOOLCHAIN_PREFIX)/lib/armv7-m
 LDFLAGS += -T$(DIR_LINKER)/$(PLATFORM).ld
-#--entry __startup
 
-OBJCOPYFLAGS := -O binary
+OCFLAGS := -O binary
 
-OBJDUMPFLAGS := -d -S
+ODFLAGS := -d -S
 
 # GCC related includes
-INCLUDES := -I$(GCARM)/arm-none-eabi/include
+INCLUDES := -I$(GCCARM_TOOLCHAIN_PATH)/$(GCCARM_TOOLCHAIN_PREFIX)/include
 
 endif
 
@@ -108,24 +115,24 @@ SRC_APP_C := main.c
 
 SRC_APP_C += platform/$(PLATFORM)/core/source/startup.c                        \
              platform/$(PLATFORM)/core/source/sysinit.c                        \
-			 platform/$(PLATFORM)/drivers/source/lpc17xx_uart.c                \
-			 platform/$(PLATFORM)/drivers/source/lpc17xx_clkpwr.c              \
-			 platform/$(PLATFORM)/drivers/source/lpc17xx_pinsel.c              \
-			 platform/$(PLATFORM)/drivers/source/lpc17xx_gpio.c                \
-			 platform/$(PLATFORM)/drivers/source/lpc17xx_pwm.c                 \
-			 platform/$(PLATFORM)/drivers/source/lpc17xx_adc.c                 \
-			 platform/$(PLATFORM)/drivers/source/lpc17xx_i2c.c
+             platform/$(PLATFORM)/drivers/source/lpc17xx_uart.c                \
+             platform/$(PLATFORM)/drivers/source/lpc17xx_clkpwr.c              \
+             platform/$(PLATFORM)/drivers/source/lpc17xx_pinsel.c              \
+             platform/$(PLATFORM)/drivers/source/lpc17xx_gpio.c                \
+             platform/$(PLATFORM)/drivers/source/lpc17xx_pwm.c                 \
+             platform/$(PLATFORM)/drivers/source/lpc17xx_adc.c                 \
+             platform/$(PLATFORM)/drivers/source/lpc17xx_i2c.c
 
 # Application related includes
 INCLUDES += -I.                                                                \
             -Iinclude/                                                         \
-			-Iplatform/$(PLATFORM)/core/include/                               \
-			-Iplatform/$(PLATFORM)/core/include/$(CPU)/                        \
-			-Iplatform/$(PLATFORM)/drivers/config/                             \
-			-Iplatform/$(PLATFORM)/drivers/include/
+            -Iplatform/$(PLATFORM)/core/include/                               \
+            -Iplatform/$(PLATFORM)/core/include/$(CPU)/                        \
+            -Iplatform/$(PLATFORM)/drivers/config/                             \
+            -Iplatform/$(PLATFORM)/drivers/include/
 
 ################################################################################
-# List of the objects files to be compiled/assembled                           #
+# List of the object files                                                     #
 ################################################################################
 
 OBJECTS_CORE_ASM := $(SRC_CORE_ASM:.s=.o)
@@ -136,7 +143,7 @@ OBJECTS_APP_ASM := $(SRC_APP_ASM:.s=.o)
 OBJECTS_APP_C   := $(SRC_APP_C:.c=.o)
 OBJECTS_APP     := $(OBJECTS_APP_ASM) $(OBJECTS_APP_C)
 
-OBJECTS := $(OBJECTS_CORE) $(OBJECTS_APP)
+OBJ := $(OBJECTS_CORE) $(OBJECTS_APP)
 
 ################################################################################
 # Makefile rules                                                               #
@@ -150,20 +157,18 @@ all: $(BIN) $(LST)
 .s.o:
 	$(AS) $(ASFLAGS) $^ -o $@
 
-core: $(OBJECTS_CORE_ASM) $(OBJECTS_CORE_C)
+$(ELF): $(OBJ)
+	$(LD) $(OBJ) $(LDFLAGS) -o $(ELF)
 
-app: $(OBJECTS_APP_ASM) $(OBJECTS_APP_C)
+$(BIN): $(ELF)
+	$(OC) $(ELF) $(OCFLAGS) $(BIN)
 
-$(EXE): core app
-	$(LD) $(OBJECTS) $(LDFLAGS) -o $(EXE)
-
-$(BIN): $(EXE)
-	$(OBJCOPY) $(EXE) $(OBJCOPYFLAGS) $(BIN)
-
-$(LST): $(EXE)
-	$(OBJDUMP) $(EXE) $(OBJDUMPFLAGS) > $(LST)
+$(LST): $(ELF)
+	$(OD) $(ELF) $(ODFLAGS) > $(LST)
 
 clean:
-	rm -f $(OBJECTS) $(EXE) $(MAP) $(BIN) $(LST)
+	rm -f $(OBJ) $(ELF) $(MAP) $(BIN) $(LST)
 
-.PHONY: core app clean
+.PHONY: all clean
+.SILENT: clean
+.INTERMEDIATE: $(OBJ)
